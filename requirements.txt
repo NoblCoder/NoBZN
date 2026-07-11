@@ -1,0 +1,13 @@
+# No external dependencies required!
+# This project uses only Python standard library modules.
+
+# Python 3.7+ is required for:
+# - dataclasses
+# - Type hints (typing module)
+# - Dictionary ordering (guaranteed in 3.7+)
+
+# If you want to extend the project, here are some useful packages:
+# numpy>=1.19.0          # For numerical operations
+# requests>=2.25.0       # For downloading dictionaries from web
+# colorama>=0.4.4        # For colored terminal output
+# rich>=10.0.0           # For beautiful console formatting
