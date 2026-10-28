@@ -82,6 +82,8 @@ Puzzle File Format:
     )
     
     args = parser.parse_args()
+    if args.max_attempts < 1:
+        parser.error("--max-attempts must be positive")
     
     # Create interface
     interface = CrosswordInterface()
@@ -89,7 +91,8 @@ Puzzle File Format:
     # Load dictionary
     if not args.quiet:
         print("📚 Loading dictionary...")
-    interface.load_dictionary(args.dictionary)
+    if not interface.load_dictionary(args.dictionary):
+        return 1
     
     # If no puzzle file provided, run interactive mode
     if not args.puzzle:
@@ -109,7 +112,8 @@ Puzzle File Format:
     
     # Save if requested
     if success and args.output:
-        interface.save_solution(args.output)
+        if not interface.save_solution(args.output):
+            return 1
     
     return 0 if success else 1
 

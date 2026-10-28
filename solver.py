@@ -14,210 +14,85 @@ class CrosswordSolver:
     Solves crossword puzzles using constraint satisfaction with backtracking.
     """
     
-    def __init__(self, grid: Grid, lexicon: Lexicon):
-        """
-        Initialize the solver.
-        
-        Args:
-            grid: The Grid object representing the puzzle
-            lexicon: The Lexicon object with the word dictionary
-        """
+    def __init__(self, grid: Grid, lexicon: Lexicon, candidates=None, allow_repeats=False):
         self.grid = grid
         self.lexicon = lexicon
-        
-        # Tracking
-        self.attempts = 0
-        self.backtracks = 0
-        self.start_time = 0
-        
-        # Solution state
-        self.solution: Dict[str, str] = {}  # slot_id -> word
-        self.filled_slots: Set[str] = set()
-    
-    def solve(self, verbose: bool = True, max_attempts: int = 1000000) -> bool:
-        """
-        Solve the crossword puzzle.
-        
-        Args:
-            verbose: If True, print progress updates
-            max_attempts: Maximum number of word placement attempts
-            
-        Returns:
-            True if solved, False if no solution found
-        """
-        self.start_time = time.time()
-        self.attempts = 0
-        self.backtracks = 0
+        self.candidates = candidates or {}
+        unknown = set(self.candidates) - set(grid.slots)
+        if unknown:
+            raise ValueError(f"Unknown slots: {sorted(unknown)}")
+        self.allow_repeats = allow_repeats
         self.solution = {}
         self.filled_slots = set()
-        
-        if verbose:
-            print("🔍 Starting crossword solver...")
-            print(f"   Grid: {self.grid.rows}x{self.grid.cols}")
-            print(f"   Slots: {len(self.grid.slots)}")
-            print(f"   Intersections: {len(self.grid.intersections)}")
-            print()
-        
-        # Get ordered list of slots using MRV heuristic
-        slot_order = self._get_slot_order()
-        
-        # Start backtracking
-        result = self._backtrack(slot_order, 0, verbose, max_attempts)
-        
-        elapsed = time.time() - self.start_time
-        
-        if verbose:
-            print()
-            if result:
-                print(f"✅ SOLVED in {elapsed:.2f}s!")
-            else:
-                print(f"❌ No solution found after {elapsed:.2f}s")
-            print(f"   Attempts: {self.attempts:,}")
-            print(f"   Backtracks: {self.backtracks:,}")
-        
-        return result
-    
-    def _get_slot_order(self) -> List[str]:
-        """
-        Order slots using heuristics for efficient solving.
-        
-        Uses the Minimum Remaining Values (MRV) heuristic:
-        - Prioritize slots with fewer possible words
-        - Break ties by number of intersections (more = higher priority)
-        """
-        slot_scores = []
-        
-        for slot_id, slot in self.grid.slots.items():
-            # Count possible words for this slot
-            pattern = slot.get_pattern(self.grid)
-            possible_words = self.lexicon.match_pattern(pattern)
-            num_candidates = len(possible_words)
-            
-            # Count intersections
-            intersections = self.grid.get_intersections_for_slot(slot_id)
-            num_intersections = len(intersections)
-            
-            # Score: prioritize fewer candidates, then more intersections
-            # Use negative for sorting (lower is better)
-            score = (num_candidates, -num_intersections, slot_id)
-            slot_scores.append((score, slot_id))
-        
-        # Sort by score
-        slot_scores.sort()
-        return [slot_id for _, slot_id in slot_scores]
-    
-    def _backtrack(self, slot_order: List[str], index: int, verbose: bool, max_attempts: int) -> bool:
-        """
-        Recursive backtracking algorithm.
-        
-        Args:
-            slot_order: Ordered list of slot IDs to fill
-            index: Current index in slot_order
-            verbose: Whether to print progress
-            max_attempts: Maximum attempts before giving up
-            
-        Returns:
-            True if solution found, False otherwise
-        """
-        # Check attempt limit
-        if self.attempts >= max_attempts:
+        self.attempts = self.backtracks = 0
+        self.status = "not_started"
+
+    def _domain(self, slot_id):
+        pattern = self.grid.slots[slot_id].get_pattern(self.grid)
+        words = self.candidates.get(slot_id)
+        if words is None:
+            words = self.lexicon.match_pattern(pattern)
+        used = set(self.solution.values())
+        return sorted({w.upper() for w in words
+                       if len(w) == len(pattern) and w.isascii() and w.isalpha()
+                       and all(p == '_' or p == c for p, c in zip(pattern, w.upper()))
+                       and (self.allow_repeats or w.upper() not in used)})
+
+    def solve(self, verbose=True, max_attempts=1000000):
+        if max_attempts < 1:
+            raise ValueError("max_attempts must be positive")
+        self.start_time = time.time()
+        self.attempts = self.backtracks = 0
+        self.solution = {}
+        self.filled_slots = set()
+        self.status = "searching"
+        covered = {cell for slot in self.grid.slots.values() for cell in slot.cells}
+        if not self.grid.slots or any(
+            self.grid.get_cell(r, c) != '#' and (r, c) not in covered
+            for r in range(self.grid.rows) for c in range(self.grid.cols)
+        ):
+            self.status = "invalid_grid"
             if verbose:
-                print(f"\n⚠️  Reached maximum attempts ({max_attempts:,})")
+                print("Cannot solve: every white cell must belong to a word of at least two letters.")
             return False
-        
-        # Base case: all slots filled
-        if index >= len(slot_order):
+        result = self._search(max_attempts)
+        if result:
+            self.status = "solved"
+        elif self.status != "limit_reached":
+            self.status = "no_solution"
+        if verbose:
+            print(f"{self.status}: {self.attempts} attempts, {self.backtracks} backtracks")
+        return result
+
+    def _search(self, limit):
+        if len(self.solution) == len(self.grid.slots):
             return True
-        
-        slot_id = slot_order[index]
-        slot = self.grid.slots[slot_id]
-        
-        # Get current pattern and possible words
-        pattern = slot.get_pattern(self.grid)
-        candidates = self.lexicon.match_pattern(pattern)
-        
-        if verbose and self.attempts % 1000 == 0:
-            progress = (index / len(slot_order)) * 100
-            print(f"   Progress: {progress:.1f}% | Attempts: {self.attempts:,} | "
-                  f"Backtracks: {self.backtracks:,} | Current: {slot_id}", end='\r')
-        
-        # If no candidates, backtrack immediately
-        if not candidates:
-            self.backtracks += 1
+        domains = {sid: self._domain(sid) for sid in self.grid.slots if sid not in self.solution}
+        sid = min(domains, key=lambda s: (len(domains[s]),
+                  -len(self.grid.get_intersections_for_slot(s)), s))
+        if not domains[sid]:
             return False
-        
-        # Try each candidate word
-        for word in candidates:
-            self.attempts += 1
-            
-            # Save current grid state (for backtracking)
-            saved_state = self._save_slot_state(slot_id)
-            
-            # Place the word
-            self.grid.fill_slot(slot_id, word)
-            self.solution[slot_id] = word
-            self.filled_slots.add(slot_id)
-            
-            # Check if this placement is consistent with constraints
-            if self._is_consistent(slot_id):
-                # Recurse to next slot
-                if self._backtrack(slot_order, index + 1, verbose, max_attempts):
-                    return True  # Solution found!
-            
-            # If we reach here, this word didn't work - backtrack
-            self._restore_slot_state(slot_id, saved_state)
-            self.solution.pop(slot_id, None)
-            self.filled_slots.discard(slot_id)
-            self.backtracks += 1
-        
-        # No word worked for this slot
-        return False
-    
-    def _is_consistent(self, slot_id: str) -> bool:
-        """
-        Check if the current grid state is consistent after filling a slot.
-        
-        Verifies that all intersecting slots still have at least one
-        possible word that could fit.
-        
-        Args:
-            slot_id: The slot that was just filled
-            
-        Returns:
-            True if consistent (no dead ends), False otherwise
-        """
-        intersections = self.grid.get_intersections_for_slot(slot_id)
-        
-        for inter in intersections:
-            # Get the other slot involved in this intersection
-            other_slot_id = inter.slot2 if inter.slot1 == slot_id else inter.slot1
-            
-            # Skip if already filled
-            if other_slot_id in self.filled_slots:
-                continue
-            
-            # Check if the other slot still has valid candidates
-            other_slot = self.grid.slots[other_slot_id]
-            pattern = other_slot.get_pattern(self.grid)
-            candidates = self.lexicon.match_pattern(pattern)
-            
-            # Dead end: no words can fit this pattern
-            if not candidates:
+        slot = self.grid.slots[sid]
+        saved = [self.grid.get_cell(r, c) for r, c in slot.cells]
+        for word in domains[sid]:
+            if self.attempts >= limit:
+                self.status = "limit_reached"
                 return False
-        
-        return True
-    
-    def _save_slot_state(self, slot_id: str) -> List[str]:
-        """Save the current state of a slot's cells."""
-        slot = self.grid.slots[slot_id]
-        return [self.grid.get_cell(r, c) for r, c in slot.cells]
-    
-    def _restore_slot_state(self, slot_id: str, state: List[str]) -> None:
-        """Restore a slot's cells to a saved state."""
-        slot = self.grid.slots[slot_id]
-        for i, (r, c) in enumerate(slot.cells):
-            self.grid.set_cell(r, c, state[i])
-    
+            self.attempts += 1
+            self.grid.fill_slot(sid, word)
+            self.solution[sid] = word
+            self.filled_slots.add(sid)
+            if self._search(limit):
+                return True
+            for (r, c), char in zip(slot.cells, saved):
+                self.grid.set_cell(r, c, char)
+            del self.solution[sid]
+            self.filled_slots.remove(sid)
+            self.backtracks += 1
+            if self.status == "limit_reached":
+                return False
+        return False
+
     def get_solution(self) -> Dict[str, str]:
         """
         Get the solution as a dictionary of slot_id -> word.

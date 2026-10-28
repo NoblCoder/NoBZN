@@ -85,6 +85,12 @@ class Grid:
             grid_data: List of strings, each representing a row.
                       Use '.' or '_' for empty, '#' for blocked.
         """
+        if not grid_data or not grid_data[0]:
+            raise ValueError("Grid must contain nonempty rows")
+        if any(len(row) != len(grid_data[0]) for row in grid_data):
+            raise ValueError("Grid rows must have equal widths")
+        if any(c not in "._#ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz" for row in grid_data for c in row):
+            raise ValueError("Grid accepts only A-Z, '.', '_' and '#'")
         self.grid = [list(row.upper()) for row in grid_data]
         self.rows = len(self.grid)
         self.cols = len(self.grid[0]) if self.rows > 0 else 0
@@ -152,7 +158,7 @@ class Grid:
         # Second pass: extract the actual slots
         for (r, c), num in numbered_cells.items():
             # Extract across slot
-            if c + 1 < self.cols and not self.is_blocked(r, c + 1):
+            if (c == 0 or self.is_blocked(r, c - 1)) and c + 1 < self.cols and not self.is_blocked(r, c + 1):
                 cells = []
                 col = c
                 while col < self.cols and not self.is_blocked(r, col):
@@ -171,7 +177,7 @@ class Grid:
                     )
             
             # Extract down slot
-            if r + 1 < self.rows and not self.is_blocked(r + 1, c):
+            if (r == 0 or self.is_blocked(r - 1, c)) and r + 1 < self.rows and not self.is_blocked(r + 1, c):
                 cells = []
                 row = r
                 while row < self.rows and not self.is_blocked(row, c):

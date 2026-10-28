@@ -27,49 +27,34 @@ class Lexicon:
         print(f"Loading dictionary from {filepath}...")
         word_count = 0
         
-        try:
-            with open(filepath, 'r', encoding='utf-8') as f:
-                for line in f:
-                    word = line.strip().upper()
-                    # Only accept alphabetic words (no apostrophes, hyphens, etc.)
-                    if word and word.isalpha():
-                        self.all_words.add(word)
-                        self.words_by_length[len(word)].add(word)
-                        word_count += 1
-        except FileNotFoundError:
-            print(f"Error: Dictionary file '{filepath}' not found.")
-            print("Attempting to use built-in word list...")
-            self._load_system_words()
-            return
-        
+        with open(filepath, 'r', encoding='utf-8') as f:
+            for line in f:
+                word = line.strip().upper()
+                if re.fullmatch(r"[A-Z]+", word):
+                    self.all_words.add(word)
+                    self.words_by_length[len(word)].add(word)
+                    word_count += 1
+        if not word_count:
+            raise ValueError("Dictionary contains no A-Z words")
         print(f"✓ Loaded {word_count} words")
-        print(f"✓ Length range: {min(self.words_by_length.keys())} to {max(self.words_by_length.keys())} letters")
-    
+
     def _load_system_words(self) -> None:
-        """
-        Fallback: Try to load words from system dictionary (Unix/Mac).
-        """
-        system_paths = [
-            '/usr/share/dict/words',
-            '/usr/dict/words',
-        ]
-        
-        for path in system_paths:
-            try:
+        """Load a system dictionary, or a small portable demonstration list."""
+        from pathlib import Path
+        for path in ('/usr/share/dict/words', '/usr/dict/words'):
+            if Path(path).is_file():
                 self.load_from_file(path)
                 return
-            except:
-                continue
-        
-        print("Warning: No dictionary file found. Using minimal built-in word list.")
+        print("No system dictionary found; using demonstration vocabulary. "
+              "Supply -d for larger fill-in puzzles or JSON candidates for a crossword.")
         self._load_minimal_words()
-    
+
     def _load_minimal_words(self) -> None:
         """
         Minimal fallback word list for testing.
         """
         minimal_words = [
-            "CAT", "DOG", "BAT", "RAT", "HAT", "MAT", "SAT", "FAT",
+            "CAR", "TEN", "CAN", "RAN", "AS", "AT", "BE", "BY", "DO", "GO", "HE", "IF", "IN", "IS", "IT", "ME", "MY", "NO", "OF", "ON", "OR", "SO", "TO", "UP", "US", "WE", "CAT", "DOG", "BAT", "RAT", "HAT", "MAT", "SAT", "FAT",
             "CATS", "DOGS", "BATS", "RATS", "HATS", "MATS", "FATS",
             "THE", "AND", "FOR", "ARE", "BUT", "NOT", "YOU", "ALL",
             "CAN", "HER", "WAS", "ONE", "OUR", "OUT", "DAY", "GET",
@@ -115,6 +100,8 @@ class Lexicon:
             List of matching words, sorted alphabetically
         """
         pattern = pattern.upper()
+        if not re.fullmatch(r"[A-Z_.]+", pattern):
+            return []
         length = len(pattern)
         
         # Convert pattern to regex: _ or . becomes [A-Z]
