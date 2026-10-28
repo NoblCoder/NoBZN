@@ -4,6 +4,9 @@ Handles input parsing and output formatting for the crossword solver.
 """
 
 import os
+import json
+import re
+from clues import clue_candidates
 from typing import List, Optional
 from grid import Grid
 from lexicon import Lexicon
@@ -17,6 +20,7 @@ class CrosswordInterface:
     
     def __init__(self):
         self.lexicon = Lexicon()
+        self.candidates = {}
         self.grid = None
         self.solver = None
     
@@ -65,19 +69,30 @@ class CrosswordInterface:
             True if successful
         """
         try:
-            with open(filepath, 'r') as f:
-                lines = []
-                for line in f:
-                    line = line.strip()
-                    # Skip empty lines and comment lines
-                    if line and not line.startswith('#'):
+            self.solver = None
+            self.grid = None
+            self.candidates = {}
+            with open(filepath, 'r', encoding='utf-8') as f:
+                if filepath.lower().endswith('.json'):
+                    data = json.load(f)
+                    grid = Grid(data['grid'])
+                    candidates = clue_candidates(grid, data.get('clues', {}),
+                                                 data.get('candidates', {}),
+                                                 data.get('clue_database', {}))
+                else:
+                    lines = []
+                    for raw in f:
+                        line = raw.strip()
+                        if not line or line.startswith(';') or line.startswith('//'):
+                            continue
+                        # Preserve black-square rows; accept legacy prose comments.
+                        if line.startswith('#') and not re.fullmatch(r"[A-Za-z._#]+", line):
+                            continue
                         lines.append(line)
-            
-            if not lines:
-                print("Error: No puzzle data found in file.")
-                return False
-            
-            self.grid = Grid(lines)
+                    grid = Grid(lines)
+                    candidates = {}
+            self.grid = grid
+            self.candidates = candidates
             print(f"✓ Loaded puzzle: {self.grid.rows}x{self.grid.cols}")
             return True
         except FileNotFoundError:
@@ -203,7 +218,9 @@ class CrosswordInterface:
         print("SOLVING PUZZLE")
         print("="*60)
         
-        self.solver = CrosswordSolver(self.grid, self.lexicon)
+        self.solver = CrosswordSolver(self.grid, self.lexicon, self.candidates)
+        if not self.candidates:
+            print("Fill-in mode: dictionary words are not answers verified against clues.")
         success = self.solver.solve(verbose=verbose, max_attempts=max_attempts)
         
         if success:

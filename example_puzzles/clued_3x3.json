@@ -1,0 +1,9 @@
+{
+  "grid": ["...", ".#.", "..."],
+  "clues": {
+    "1-across": "Feline pet",
+    "1-down": "Automobile",
+    "2-down": "Number after nine",
+    "3-across": "Moved quickly on foot"
+  }
+}
